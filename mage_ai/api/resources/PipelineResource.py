@@ -174,11 +174,11 @@ class PipelineResource(BaseResource):
 
             if NO_TAGS_QUERY in tags:
                 pipeline_uuids_with_tags = set(cache.get_all_pipeline_uuids_with_tags())
-                all_pipeline_uuids = set(Pipeline.get_all_pipelines(get_repo_path()))
+                all_pipeline_uuids = set(Pipeline.get_all_pipelines(get_repo_path(user=user)))
                 pipeline_uuids_without_tags = list(all_pipeline_uuids - pipeline_uuids_with_tags)
                 pipeline_uuids = pipeline_uuids + pipeline_uuids_without_tags
         else:
-            pipeline_uuids = Pipeline.get_all_pipelines(get_repo_path())
+            pipeline_uuids = Pipeline.get_all_pipelines(get_repo_path(user=user))
 
         if search_query:
             pipeline_uuids = list(filter(
@@ -215,9 +215,11 @@ class PipelineResource(BaseResource):
                     print(err_message)
                     return None
 
+        repo_path = get_repo_path(user=user)
+
         def get_pipeline_with_config(uuid, config: Dict) -> Pipeline:
             try:
-                return Pipeline(uuid, config=config)
+                return Pipeline(uuid, config=config, repo_path=repo_path)
             except Exception as err:
                 err_message = f'Error loading pipeline sync {uuid}: {err}.'
                 if err.__class__.__name__ == 'OSError' and 'Too many open files' in err.strerror:
@@ -236,6 +238,7 @@ class PipelineResource(BaseResource):
                     pipelines.append(Pipeline(
                         pipeline_uuid_from_cache,
                         config=pipeline_dict['pipeline'],
+                        repo_path=repo_path
                     ))
         else:
             for uuid in pipeline_uuids:
@@ -250,6 +253,7 @@ class PipelineResource(BaseResource):
                         pipelines.append(Pipeline(
                             uuid,
                             config=dict(type='invalid'),
+                            repo_path=repo_path,
                         ))
                 else:
                     pipeline_uuids_miss.append(uuid)
@@ -369,7 +373,10 @@ class PipelineResource(BaseResource):
         pipeline = None
 
         if template_uuid:
-            custom_template = CustomPipelineTemplate.load(template_uuid=template_uuid)
+            custom_template = CustomPipelineTemplate.load(
+                repo_path=get_repo_path(user=user),
+                template_uuid=template_uuid,
+            )
             pipeline = custom_template.create_pipeline(name)
         elif clone_pipeline_uuid is not None:
             source = Pipeline.get(clone_pipeline_uuid)
@@ -379,7 +386,7 @@ class PipelineResource(BaseResource):
                 name,
                 description=description,
                 pipeline_type=pipeline_type,
-                repo_path=get_repo_path(),
+                repo_path=get_repo_path(user=user),
                 tags=tags,
             )
 
