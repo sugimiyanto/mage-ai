@@ -148,7 +148,6 @@ class PipelineResource(BaseResource):
 
         history_by_pipeline_uuid = {}
         repo_path = get_repo_path(user=user)
-        print('repo path:', repo_path)
         if from_history_days is not None and is_number(from_history_days):
             timestamp_start = (datetime.utcnow() - timedelta(
                 hours=24 * int(from_history_days),
@@ -208,7 +207,7 @@ class PipelineResource(BaseResource):
 
         async def get_pipeline(uuid: str) -> Pipeline:
             try:
-                return await Pipeline.get_async(uuid)
+                return await Pipeline.get_async(uuid, repo_path)
             except Exception as err:
                 err_message = f'Error loading pipeline {uuid}: {err}.'
                 if err.__class__.__name__ == 'OSError' and 'Too many open files' in err.strerror:
