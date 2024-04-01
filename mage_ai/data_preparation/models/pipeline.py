@@ -81,7 +81,7 @@ class Pipeline:
     def __init__(
         self,
         uuid,
-        repo_path=None,
+        repo_path,
         config=None,
         repo_config=None,
         catalog=None,
@@ -102,7 +102,7 @@ class Pipeline:
         self.extensions = {}
         self.name = None
         self.notification_config = dict()
-        self.repo_path = repo_path or get_repo_path()
+        self.repo_path = repo_path
         self.retry_config = {}
         self.run_pipeline_in_one_process = False
         self.schedules = []
@@ -224,9 +224,9 @@ class Pipeline:
     def create(
         self,
         name: str,
+        repo_path: str,
         description: str = None,
         pipeline_type: PipelineType = PipelineType.PYTHON,
-        repo_path: str = None,
         tags: List[str] = None,
     ):
         """
@@ -253,8 +253,8 @@ class Pipeline:
 
         pipeline = Pipeline(
             uuid,
+            repo_path,
             description=description,
-            repo_path=repo_path,
             tags=tags or [],
         )
 
@@ -357,7 +357,7 @@ class Pipeline:
 
             block_cache = await BlockCache.initialize_cache()
             for block in blocks:
-                block_cache.add_pipeline(block, duplicate_pipeline)
+                block_cache.add_pipeline(block, duplicate_pipeline, duplicate_pipeline.repo_path)
 
         return cls.get(
             duplicate_pipeline_uuid,
@@ -378,7 +378,7 @@ class Pipeline:
     def get(
         self,
         uuid,
-        repo_path: str = None,
+        repo_path: str,
         check_if_exists: bool = False,
         all_projects: bool = False,
         use_repo_path: bool = False,
@@ -397,9 +397,9 @@ class Pipeline:
         if check_if_exists and not os.path.exists(config_path):
             return None
 
-        pipeline = self(uuid, repo_path=repo_path, use_repo_path=use_repo_path)
+        pipeline = self(uuid, repo_path, use_repo_path=use_repo_path)
         if PipelineType.INTEGRATION == pipeline.type:
-            pipeline = IntegrationPipeline(uuid, repo_path=repo_path)
+            pipeline = IntegrationPipeline(uuid, repo_path)
 
         return pipeline
 
@@ -493,7 +493,7 @@ class Pipeline:
     async def get_async(
         self,
         uuid,
-        repo_path: str = None,
+        repo_path: str,
         all_projects: bool = False,
         use_repo_path: bool = False,
     ):
@@ -598,14 +598,13 @@ class Pipeline:
         return arr
 
     @classmethod
-    def get_pipelines_by_block(self, block, repo_path=None, widget=False) -> List['Pipeline']:
-        repo_path = repo_path or get_repo_path()
+    def get_pipelines_by_block(self, block, repo_path: str, widget=False) -> List['Pipeline']:
         pipelines_folder = os.path.join(repo_path, PIPELINES_FOLDER)
         pipelines = []
         for entry in os.scandir(pipelines_folder):
             if entry.is_dir():
                 try:
-                    p = Pipeline(entry.name, repo_path=repo_path)
+                    p = Pipeline(entry.name, repo_path)
                     mapping = p.widgets_by_uuid if widget else p.blocks_by_uuid
                     if block.uuid in mapping:
                         pipelines.append(p)

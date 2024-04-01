@@ -645,7 +645,7 @@ class Block(DataIntegrationMixin, SparkBlock, ProjectPlatformAccessible):
             return add_absolute_path(file_path)
 
         return self.__build_file_path(
-            self.repo_path or os.getcwd(),
+            self.repo_path,
             self.uuid,
             self.type,
             self.language,
@@ -661,7 +661,8 @@ class Block(DataIntegrationMixin, SparkBlock, ProjectPlatformAccessible):
             if file:
                 return file
 
-        return File.from_path(self.file_path)
+        repo_path = self.pipeline.repo_path if self.pipeline else None
+        return File.from_path(self.file_path, repo_path=repo_path)
 
     @property
     def table_name(self) -> str:
@@ -2393,7 +2394,7 @@ df = get_variable('{self.pipeline.uuid}', '{self.uuid}', 'df')
     def get_pipelines_from_cache(self, block_cache: BlockCache = None) -> List[Dict]:
         if block_cache is None:
             block_cache = BlockCache()
-        arr = block_cache.get_pipelines(self)
+        arr = block_cache.get_pipelines(self, self.repo_path)
 
         return unique_by(
             arr,
@@ -3482,7 +3483,7 @@ df = get_variable('{self.pipeline.uuid}', '{self.uuid}', 'df')
                 New block added to pipeline, so it must be added to the block cache.
                 Old block no longer in pipeline, so it must be removed from block cache.
                 """
-                cache.add_pipeline(self, self.pipeline)
+                cache.add_pipeline(self, self.pipeline, self.pipeline.repo_path)
                 old_block = BlockFactory.get_block(
                     old_uuid,
                     old_uuid,
@@ -3492,10 +3493,14 @@ df = get_variable('{self.pipeline.uuid}', '{self.uuid}', 'df')
                 )
                 cache.remove_pipeline(old_block, self.pipeline.uuid, self.pipeline.repo_path)
             else:
-                cache.move_pipelines(self, dict(
-                    type=self.type,
-                    uuid=old_uuid,
-                ))
+                cache.move_pipelines(
+                    self,
+                    dict(
+                        type=self.type,
+                        uuid=old_uuid,
+                    ),
+                    self.pipeline.repo_path,
+                )
 
     def __update_pipeline_block(self, widget=False) -> None:
         if self.pipeline is None:

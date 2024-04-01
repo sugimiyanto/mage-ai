@@ -20,7 +20,6 @@ from mage_ai.settings.keys import (
     GIT_SSH_PUBLIC_KEY,
     GITLAB_HOST,
 )
-from mage_ai.settings.repo import get_repo_path
 
 
 def get_auth_type_from_url(remote_url: str) -> AuthType:
@@ -140,12 +139,12 @@ def add_host_to_known_hosts(remote_repo_link: str):
     return False
 
 
-def get_access_token(git_config, repo_path: str = None) -> str:
+def get_access_token(git_config, repo_path) -> str:
     token = get_settings_value(GIT_ACCESS_TOKEN)
     if not token and git_config and git_config.access_token_secret_name:
         token = get_secret_value(
             git_config.access_token_secret_name,
-            repo_name=repo_path or get_repo_path(),
+            repo_name=repo_path,
         )
 
     return token

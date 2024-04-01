@@ -147,6 +147,8 @@ class PipelineResource(BaseResource):
             from_history_days = from_history_days[0]
 
         history_by_pipeline_uuid = {}
+        repo_path = get_repo_path(user=user)
+        print('repo path:', repo_path)
         if from_history_days is not None and is_number(from_history_days):
             timestamp_start = (datetime.utcnow() - timedelta(
                 hours=24 * int(from_history_days),
@@ -174,11 +176,11 @@ class PipelineResource(BaseResource):
 
             if NO_TAGS_QUERY in tags:
                 pipeline_uuids_with_tags = set(cache.get_all_pipeline_uuids_with_tags())
-                all_pipeline_uuids = set(Pipeline.get_all_pipelines(get_repo_path(user=user)))
+                all_pipeline_uuids = set(Pipeline.get_all_pipelines(repo_path=repo_path))
                 pipeline_uuids_without_tags = list(all_pipeline_uuids - pipeline_uuids_with_tags)
                 pipeline_uuids = pipeline_uuids + pipeline_uuids_without_tags
         else:
-            pipeline_uuids = Pipeline.get_all_pipelines(get_repo_path(user=user))
+            pipeline_uuids = Pipeline.get_all_pipelines(repo_path=repo_path)
 
         if search_query:
             pipeline_uuids = list(filter(
@@ -219,7 +221,7 @@ class PipelineResource(BaseResource):
 
         def get_pipeline_with_config(uuid, config: Dict) -> Pipeline:
             try:
-                return Pipeline(uuid, config=config, repo_path=repo_path)
+                return Pipeline(uuid, repo_path, config=config)
             except Exception as err:
                 err_message = f'Error loading pipeline sync {uuid}: {err}.'
                 if err.__class__.__name__ == 'OSError' and 'Too many open files' in err.strerror:
@@ -237,12 +239,12 @@ class PipelineResource(BaseResource):
                 if pipeline_uuid_from_cache in pipeline_uuids:
                     pipelines.append(Pipeline(
                         pipeline_uuid_from_cache,
+                        repo_path,
                         config=pipeline_dict['pipeline'],
-                        repo_path=repo_path
                     ))
         else:
             for uuid in pipeline_uuids:
-                pipeline_dict = cache.get_model(dict(uuid=uuid))
+                pipeline_dict = cache.get_model(dict(uuid=uuid), repo_path=repo_path)
                 if pipeline_dict and pipeline_dict.get('pipeline'):
                     pipeline = get_pipeline_with_config(uuid, pipeline_dict['pipeline'])
                     if pipeline:
@@ -252,8 +254,8 @@ class PipelineResource(BaseResource):
                         # can still be displayed in UI and visible to user
                         pipelines.append(Pipeline(
                             uuid,
+                            repo_path,
                             config=dict(type='invalid'),
-                            repo_path=repo_path,
                         ))
                 else:
                     pipeline_uuids_miss.append(uuid)
@@ -372,21 +374,22 @@ class PipelineResource(BaseResource):
         llm_payload = payload.get('llm')
         pipeline = None
 
+        repo_path = get_repo_path(user=user)
         if template_uuid:
             custom_template = CustomPipelineTemplate.load(
-                repo_path=get_repo_path(user=user),
+                repo_path=repo_path,
                 template_uuid=template_uuid,
             )
             pipeline = custom_template.create_pipeline(name)
         elif clone_pipeline_uuid is not None:
-            source = Pipeline.get(clone_pipeline_uuid)
+            source = Pipeline.get(clone_pipeline_uuid, repo_path)
             pipeline = await Pipeline.duplicate(source, name)
         else:
             pipeline = Pipeline.create(
                 name,
                 description=description,
                 pipeline_type=pipeline_type,
-                repo_path=get_repo_path(user=user),
+                repo_path=repo_path,
                 tags=tags,
             )
 
@@ -460,7 +463,7 @@ class PipelineResource(BaseResource):
 
         async def _on_create_callback(resource):
             cache = await PipelineCache.initialize_cache()
-            cache.add_model(resource.model)
+            cache.add_model(resource.model, repo_path)
 
             tags = resource.model.tags
             if tags:
@@ -477,15 +480,21 @@ class PipelineResource(BaseResource):
 
     @classmethod
     @safe_db_query
-    async def __fetch_model(self, pipeline_uuid: str, **kqwargs):
+    async def __fetch_model(self, pipeline_uuid: str, repo_path: str, **kwargs):
         all_projects = project_platform_activated()
 
         if all_projects:
             return await get_pipeline_from_platform_async(
                 pipeline_uuid,
+                repo_path=repo_path,
             )
 
-        return await Pipeline.get_async(pipeline_uuid, all_projects=all_projects)
+        return await Pipeline.get_async(
+            pipeline_uuid,
+            repo_path,
+            all_projects=all_projects,
+            use_repo_path=repo_path is not None,
+        )
 
     @classmethod
     @safe_db_query
@@ -495,12 +504,15 @@ class PipelineResource(BaseResource):
         **kwargs,
     ):
         pipeline_uuid = urllib.parse.unquote(pk)
-        return await self.__fetch_model(pipeline_uuid, **kwargs)
+        user = kwargs.get('user')
+        repo_path = get_repo_path(user=user)
+        return await self.__fetch_model(pipeline_uuid, repo_path, **kwargs)
 
     @classmethod
     @safe_db_query
     async def member(self, pk, user, **kwargs):
-        pipeline = await self.__fetch_model(pk, **kwargs)
+        repo_path = get_repo_path(user=user)
+        pipeline = await self.__fetch_model(pk, repo_path, **kwargs)
 
         api_operation_action = kwargs.get('api_operation_action', None)
         if api_operation_action != DELETE:
@@ -543,9 +555,10 @@ class PipelineResource(BaseResource):
     @safe_db_query
     async def delete(self, **kwargs):
         async def _on_delete_callback(resource):
+            repo_path = get_repo_path(user=self.current_user)
             pipeline = resource.model
             pipeline_cache = await PipelineCache.initialize_cache()
-            pipeline_cache.remove_model(pipeline)
+            pipeline_cache.remove_model(pipeline, repo_path)
 
             tags = pipeline.tags
             if tags:
@@ -583,6 +596,8 @@ class PipelineResource(BaseResource):
                 self.model.validate('A cycle was formed while adding a block')
                 self.model.save()
             return self
+
+        repo_path = get_repo_path(user=self.current_user)
 
         query = kwargs.get('query', {})
         update_content = query.get('update_content', [False])
@@ -718,7 +733,7 @@ class PipelineResource(BaseResource):
 
         def retry_pipeline_runs(pipeline_runs):
             for run in pipeline_runs:
-                retry_pipeline_run(run)
+                retry_pipeline_run(run, repo_path)
 
         @safe_db_query
         def query_incomplete_block_runs(pipeline_uuid: str):
@@ -782,8 +797,10 @@ class PipelineResource(BaseResource):
                 elif status == 'retry_incomplete_block_runs':
                     retry_incomplete_block_runs(pipeline_uuid)
 
+            repo_path = get_repo_path(user=self.current_user)
+
             cache = await PipelineCache.initialize_cache()
-            cache.update_model(resource.model)
+            cache.update_model(resource.model, repo_path)
 
         self.on_update_callback = _update_callback
 

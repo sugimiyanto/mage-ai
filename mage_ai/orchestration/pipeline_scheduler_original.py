@@ -155,10 +155,12 @@ class PipelineScheduler:
                 if is_integration:
                     clear_source_output_files(
                         self.pipeline_run,
+                        self.pipeline,
                         self.logger,
                     )
                     initialize_state_and_runs(
                         self.pipeline_run,
+                        self.pipeline,
                         self.logger,
                         self.pipeline_run.get_variables(),
                     )
@@ -228,6 +230,7 @@ class PipelineScheduler:
                     tags = self.build_tags()
                     calculate_pipeline_run_metrics(
                         self.pipeline_run,
+                        self.pipeline,
                         logger=self.logger,
                         logging_tags=tags,
                     )
@@ -456,6 +459,7 @@ class PipelineScheduler:
 
                 calculate_pipeline_run_metrics(
                     self.pipeline_run,
+                    self.pipeline,
                     logger=self.logger,
                     logging_tags=tags,
                 )
@@ -478,6 +482,7 @@ class PipelineScheduler:
         if PipelineType.INTEGRATION == self.pipeline.type:
             calculate_pipeline_run_metrics(
                 self.pipeline_run,
+                self.pipeline,
                 logger=self.logger,
                 logging_tags=tags,
             )
@@ -1062,6 +1067,7 @@ def run_integration_stream(
                     calculate_source_metrics(
                         pipeline_run,
                         block_run,
+                        pipeline,
                         stream=tap_stream_id,
                         logger=pipeline_scheduler.logger,
                         logging_tags=merge_dict(tags_updated, dict(tags=tags2)),
@@ -1070,6 +1076,7 @@ def run_integration_stream(
                     calculate_destination_metrics(
                         pipeline_run,
                         block_run,
+                        pipeline,
                         stream=tap_stream_id,
                         logger=pipeline_scheduler.logger,
                         logging_tags=merge_dict(tags_updated, dict(tags=tags2)),
@@ -1246,9 +1253,10 @@ def configure_pipeline_run_payload(
 @safe_db_query
 def retry_pipeline_run(
     pipeline_run: Dict,
+    repo_path: str,
 ) -> 'PipelineRun':
     pipeline_uuid = pipeline_run['pipeline_uuid']
-    pipeline = Pipeline.get(pipeline_uuid, check_if_exists=True)
+    pipeline = Pipeline.get(pipeline_uuid, repo_path, check_if_exists=True)
     if pipeline is None or not pipeline.is_valid_pipeline(pipeline.dir_path):
         raise Exception(f'Pipeline {pipeline_uuid} is not a valid pipeline.')
 
@@ -1392,7 +1400,7 @@ def check_sla():
                 else pipeline_run.created_at
             if compare(start_date + timedelta(seconds=sla), current_time) == -1:
                 # passed SLA for pipeline_run
-                pipeline = Pipeline.get(pipeline_schedule.pipeline_uuid)
+                pipeline = pipeline_schedule.pipeline
                 notification_sender = NotificationSender(
                     NotificationConfig.load(
                         config=merge_dict(
@@ -1682,7 +1690,7 @@ def gen_pipeline_with_schedules_single_project(
     # each pipeline.
     for pipeline_uuid, active_schedules in pipeline_schedules_by_pipeline.items():
         try:
-            pipeline = Pipeline.get(pipeline_uuid)
+            pipeline = Pipeline.get(pipeline_uuid, get_repo_path())
         except Exception as e:
             print(f'Error fetching pipeline {pipeline_uuid}: {e}')
             continue
