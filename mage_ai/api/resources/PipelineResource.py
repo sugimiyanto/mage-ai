@@ -207,7 +207,7 @@ class PipelineResource(BaseResource):
 
         async def get_pipeline(uuid: str) -> Pipeline:
             try:
-                return await Pipeline.get_async(uuid, repo_path)
+                return await Pipeline.get_async(uuid, repo_path=repo_path)
             except Exception as err:
                 err_message = f'Error loading pipeline {uuid}: {err}.'
                 if err.__class__.__name__ == 'OSError' and 'Too many open files' in err.strerror:
@@ -216,11 +216,9 @@ class PipelineResource(BaseResource):
                     print(err_message)
                     return None
 
-        repo_path = get_repo_path(user=user)
-
         def get_pipeline_with_config(uuid, config: Dict) -> Pipeline:
             try:
-                return Pipeline(uuid, repo_path, config=config)
+                return Pipeline(uuid, config=config, repo_path=repo_path)
             except Exception as err:
                 err_message = f'Error loading pipeline sync {uuid}: {err}.'
                 if err.__class__.__name__ == 'OSError' and 'Too many open files' in err.strerror:
@@ -238,8 +236,8 @@ class PipelineResource(BaseResource):
                 if pipeline_uuid_from_cache in pipeline_uuids:
                     pipelines.append(Pipeline(
                         pipeline_uuid_from_cache,
-                        repo_path,
                         config=pipeline_dict['pipeline'],
+                        repo_path=repo_path,
                     ))
         else:
             for uuid in pipeline_uuids:
@@ -253,8 +251,8 @@ class PipelineResource(BaseResource):
                         # can still be displayed in UI and visible to user
                         pipelines.append(Pipeline(
                             uuid,
-                            repo_path,
                             config=dict(type='invalid'),
+                            repo_path=repo_path,
                         ))
                 else:
                     pipeline_uuids_miss.append(uuid)
@@ -376,12 +374,12 @@ class PipelineResource(BaseResource):
         repo_path = get_repo_path(user=user)
         if template_uuid:
             custom_template = CustomPipelineTemplate.load(
-                repo_path=repo_path,
+                repo_path,
                 template_uuid=template_uuid,
             )
             pipeline = custom_template.create_pipeline(name)
         elif clone_pipeline_uuid is not None:
-            source = Pipeline.get(clone_pipeline_uuid, repo_path)
+            source = Pipeline.get(clone_pipeline_uuid, repo_path=repo_path)
             pipeline = await Pipeline.duplicate(source, name)
         else:
             pipeline = Pipeline.create(
@@ -490,9 +488,8 @@ class PipelineResource(BaseResource):
 
         return await Pipeline.get_async(
             pipeline_uuid,
-            repo_path,
             all_projects=all_projects,
-            use_repo_path=repo_path is not None,
+            repo_path=repo_path,
         )
 
     @classmethod

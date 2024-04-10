@@ -139,7 +139,7 @@ def add_host_to_known_hosts(remote_repo_link: str):
     return False
 
 
-def get_access_token(git_config, repo_path) -> str:
+def get_access_token(git_config, repo_path: str) -> str:
     token = get_settings_value(GIT_ACCESS_TOKEN)
     if not token and git_config and git_config.access_token_secret_name:
         token = get_secret_value(
